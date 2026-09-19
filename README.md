@@ -1,3 +1,10 @@
+## Credits and acknowledgements
+
+Do keep in mind that basically ALL OF THIS was made and verified, and everything, by Claude Code. As I don't know shit about coding, ESPECIALLY when it comes to drivers, like, how would I even do this?! With that being said, since AI was what ultimately made this, please keep that in mind when you use this driver. The driver is confirmed to be working on the machine I made it for, I had Claude set this up so it can help anyone else who has this problem. So yes, it's vibe-coded. This'll be the one and only time you'll see a vibe coded thing like this from me. This was the one and ONLY time I would be using AI to help me with something, and I only resorted to this because this driver literally would not work otherwise since the original stuff was only made with WDDM in mind, and not XPDM. Claude likely already says this somewhere, but I'm just repeating it in a shorter, better way to understand, since Claude, like all AIs, loves going into detail lmao, it was very unlikely that something like this would exist otherwise, so that's why this even exists to begin with. I do hope that this driver can help you in some form though! By the way, there's two ways to get the driver itself, the driver's located in the repo's `driver` folder. But, you'd likely not want to download the source code just for the driver itself, which is why I've provided a release for the files, so you wouldn't have to download stuff you likely wouldn't need. If the driver ever gets updated by me due to another bug, more releases will be made.
+
+
+---
+
 # stwrtxp — IDT 92HD89E2 HD Audio driver for 64-bit Windows XP
 
 A from-scratch audio driver that gives the **IDT 92HD89E2** HD Audio codec working
@@ -387,9 +394,7 @@ sample code that it was built on. The LICENSE file says so explicitly.
 
 ---
 
-## Credits and acknowledgements
 
-Do keep in mind that basically ALL OF THIS was made and verified, and everything, by Claude Code. As I don't know shit about coding, ESPECIALLY when it comes to drivers, like, how would I even do this?! With that being said, since AI was what ultimately made this, please keep that in mind when you use this driver. The driver is confirmed to be working on the machine I made it for, I had Claude set this up so it can help anyone else who has this problem. So yes, it's vibe-coded. This'll be the one and only time you'll see a vibe coded thing like this from me. This was the one and ONLY time I would be using AI to help me with something, and I only resorted to this because this driver literally would not work otherwise since the original stuff was only made with WDDM in mind, and not XPDM. Claude likely already says this somewhere, but I'm just repeating it in a shorter, better way to understand, since Claude, like all AIs, loves going into detail lmao, it was very unlikely that something like this would exist otherwise, so that's why this even exists to begin with. I do hope that this driver can help you in some form though! By the way, there's two ways to get the driver itself, the driver's located in the repo's `driver` folder. But, you'd likely not want to download the source code just for the driver itself, which is why I've provided a release for the files, so you wouldn't have to download stuff you likely wouldn't need. If the driver ever gets updated by me due to another bug, more releases will be made.
 
 Built against:
 
