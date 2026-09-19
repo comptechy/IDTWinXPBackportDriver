@@ -1,0 +1,28 @@
+# szprobe - ABI size probe, runs on the DEV machine. See szprobe.c header.
+#
+# Build twice, once per architecture, and run both - the whole point is the
+# difference between them:
+#
+#   Copy this directory to a path with NO SPACES first (WDK 7600's build fails
+#   with "U1087: cannot have : and :: dependents for same target" otherwise),
+#   e.g. C:\szprobe_src, then from a plain cmd:
+#
+#   cmd /c "C:\WinDDK\7600.16385.1\bin\setenv.bat C:\WinDDK\7600.16385.1 fre x86 WNET no_oacr && cd /d C:\szprobe_src && build -cZ -w"
+#   cmd /c "C:\WinDDK\7600.16385.1\bin\setenv.bat C:\WinDDK\7600.16385.1 fre x64 WNET no_oacr && cd /d C:\szprobe_src && build -cZ -w"
+#
+# Outputs land in objfre_wnet_x86\i386\ and objfre_wnet_amd64\amd64\.
+# main() is int __cdecl main(void) because the x86 build runs with /WX.
+
+TARGETNAME=szprobe
+TARGETTYPE=PROGRAM
+
+UMTYPE=console
+USE_MSVCRT=1
+
+INCLUDES=$(DDK_INC_PATH)
+
+TARGETLIBS=\
+    $(SDK_LIB_PATH)\user32.lib \
+    $(SDK_LIB_PATH)\advapi32.lib
+
+SOURCES=szprobe.c

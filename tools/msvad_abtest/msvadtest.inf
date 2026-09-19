@@ -1,0 +1,99 @@
+; msvadtest.inf
+;
+; NOT part of the shipped driver. A minimal standalone install package for
+; Microsoft's own unmodified WDK 7600 msvad\simple sample driver
+; (vadsimpl.sys), used purely as an A/B control: does kstest.exe's
+; CreateFile-level ERROR_ACCESS_DENIED symptom (see HANDOFF.md Stage 5v)
+; happen against EVERY KS audio filter on this machine, or only against our
+; own stwrtxp driver? msvad is a root-enumerated *virtual* device (no real
+; hardware, no PCI/ACPI resources needed) - install via Device Manager's
+; "Add Legacy Hardware" wizard, "Install the hardware that I manually
+; select from a list", "Sound, video and game controllers", "Have Disk".
+;
+; Structure modeled directly on the real msvad.inf's own [MSVAD_Simple.NT]
+; section (C:\WinDDK\7600.16385.1\src\audio\msvad\msvad.inf), trimmed to
+; just the "simple" variant, since that's the only .sys we built.
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = MEDIA
+ClassGuid   = {4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+DriverVer   = 09/08/2026,1.0.0.0
+CatalogFile = msvadtest.cat
+
+[Manufacturer]
+%ManufacturerName% = MsvadTest.Mfg,NTamd64
+
+[MsvadTest.Mfg.NTamd64]
+%DeviceDesc% = MsvadTest.Install.NTamd64, *MSVADSimpleTest
+
+[MsvadTest.Install.NTamd64]
+Include     = ks.inf, wdmaudio.inf
+Needs       = KS.Registration, WDMAUDIO.Registration
+CopyFiles   = MsvadTest.CopyFiles
+AddReg      = MsvadTest.AddReg
+
+[MsvadTest.Install.NTamd64.Services]
+Include     = ks.inf
+Needs       = KS.Registration
+AddService  = msvadtest,0x00000002,MsvadTest.Service
+
+[MsvadTest.AddReg]
+HKR,,AssociatedFilters,,"wdmaud,swmidi,redbook"
+HKR,,Driver,,vadsimpl.sys
+HKR,Drivers,SubClasses,,"wave"
+HKR,Drivers\wave\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\wave\wdmaud.drv,Description,,%DeviceDesc%
+
+[MsvadTest.Install.NTamd64.Interfaces]
+AddInterface = %KSCATEGORY_AUDIO%,%KSNAME_Wave%, MsvadTest.I.Wave
+AddInterface = %KSCATEGORY_RENDER%,%KSNAME_Wave%, MsvadTest.I.Wave
+AddInterface = %KSCATEGORY_CAPTURE%,%KSNAME_Wave%, MsvadTest.I.Wave
+AddInterface = %KSCATEGORY_AUDIO%,%KSNAME_Topology%, MsvadTest.I.Topo
+
+[MsvadTest.I.Wave]
+AddReg = MsvadTest.I.Wave.AddReg
+
+[MsvadTest.I.Wave.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%DeviceDesc%
+
+[MsvadTest.I.Topo]
+AddReg = MsvadTest.I.Topo.AddReg
+
+[MsvadTest.I.Topo.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%DeviceDesc% Topology
+
+[MsvadTest.Service]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1              ; SERVICE_KERNEL_DRIVER
+StartType      = 3              ; SERVICE_DEMAND_START
+ErrorControl   = 1              ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %10%\System32\Drivers\vadsimpl.sys
+
+[MsvadTest.CopyFiles]
+vadsimpl.sys
+
+[DestinationDirs]
+MsvadTest.CopyFiles = 10,System32\Drivers
+
+[SourceDisksNames]
+1 = %DiskDesc%,,,
+
+[SourceDisksFiles]
+vadsimpl.sys = 1
+
+[Strings]
+ProviderName    = "A/B Control Test"
+ManufacturerName= "Microsoft WDK Sample (unmodified, used as A/B control)"
+DeviceDesc      = "MSVAD Simple A/B Test Device"
+ServiceDesc     = "MSVAD Simple A/B Test Service"
+DiskDesc        = "MSVAD Simple A/B Test Disk"
+Proxy.CLSID     = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+KSCATEGORY_AUDIO   = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_RENDER  = "{65E8773E-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_CAPTURE = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+KSNAME_Wave        = "Wave"
+KSNAME_Topology    = "Topology"

@@ -1,0 +1,36 @@
+TARGETNAME=stwrtxp
+TARGETPATH=obj
+TARGETTYPE=DRIVER
+
+# WDK 7600's wxp target is 32-bit only; XP x64 needs the wnet (Server 2003 /
+# XP x64 share the same NTAMD64 kernel ABI) target instead - see HANDOFF.md's
+# "WDK build target gotcha" note. Build with:
+#   build -cZ (from a "x64 Windows XP and Server 2003 Free/Checked" WDK build
+#   environment, i.e. run set64 / the wnet amd64 build environment shortcut)
+TARGETLIBS=\
+    $(DDK_LIB_PATH)\portcls.lib \
+    $(DDK_LIB_PATH)\stdunk.lib \
+    $(DDK_LIB_PATH)\libcntpr.lib \
+    $(DDK_LIB_PATH)\ks.lib
+
+C_DEFINES=$(C_DEFINES) -DSTATIC_ADAPTER
+
+INCLUDES=$(DDK_INC_PATH)
+
+SOURCES= \
+    adapter.cpp \
+    common.cpp \
+    mintopo.cpp \
+    dmachannel.cpp \
+    wavecyclicminiport.cpp \
+    wavecyclicstream.cpp \
+    guids.cpp
+
+# The post-build copy-to-..\..\inf step used to live here as an inline
+# NTTARGETFILE0/copyinf rule, but that tripped WDK 7600's makefile.def with
+# "error U1087: cannot have : and :: dependents for same target" - a bare
+# phony target name collides with rules makefile.def itself generates. The
+# WDK's own samples (e.g. src\general\build\targetpath) put custom
+# NTTARGETFILE# rules in a separate makefile.inc instead of inline in
+# sources; deferred until after a clean compile/link is confirmed, see
+# HANDOFF.md.

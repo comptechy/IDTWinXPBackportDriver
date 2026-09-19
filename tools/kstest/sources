@@ -1,0 +1,30 @@
+# kstest - standalone usermode diagnostic tool, NOT part of the driver itself.
+#
+# Opens every KSCATEGORY_RENDER (and, if -c is passed, KSCATEGORY_CAPTURE)
+# device interface directly via CreateFile + KsCreatePin, bypassing both
+# sysaudio's wave-mapper discovery AND third-party GUI tools like KS Studio
+# (which turned out to be broken/unreliable on the target machine - see
+# HANDOFF.md Stage 5l). This gives an unambiguous answer to "does our raw KS
+# pin-open path actually work", independent of both of those layers.
+#
+# Build from a "x64 Windows XP and Server 2003 Free/Checked" WDK build
+# environment (same one used for the driver itself), with:
+#   build -cZ
+
+TARGETNAME=kstest
+TARGETTYPE=PROGRAM
+MSC_WARNING_LEVEL=/W4 /WX
+
+UMTYPE=console
+USE_MSVCRT=1
+
+INCLUDES=$(DDK_INC_PATH)
+
+_NT_TARGET_VERSION=$(_NT_TARGET_VERSION_WINXP)
+
+TARGETLIBS=\
+    $(SDK_LIB_PATH)\setupapi.lib \
+    $(SDK_LIB_PATH)\advapi32.lib \
+    $(DDK_LIB_PATH)\ksuser.lib
+
+SOURCES=kstest.c

@@ -1,0 +1,243 @@
+; stwrtxp.inf
+;
+; XPDM (WaveCyclic/WavePci port-class) replacement driver for the IDT
+; 92HD89E2 HD Audio codec on the HP Pavilion p6-2133w, targeting 64-bit
+; Windows XP. See HANDOFF.md at the project root for full background.
+;
+; PREREQUISITE: Windows XP has no inbox HD Audio bus driver (that shipped
+; starting with Vista's HDAudBus.sys). Microsoft's UAA (Universal Audio
+; Architecture) bus driver package, KB888111, MUST be installed first so
+; the HDAUDIO\ bus and its FUNC_01 codec function device exist for this
+; INF to match against at all.
+;
+; Hardware ID confirmed from the target machine's Device Manager:
+;   HDAUDIO\FUNC_01&VEN_111D&DEV_76C7&SUBSYS_103C2ACD&REV_1001
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = MEDIA
+ClassGuid   = {4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+DriverVer   = 09/07/2026,1.0.0.0
+CatalogFile = stwrtxp.cat
+
+[Manufacturer]
+%ManufacturerName% = StwrtXP.Mfg,NTamd64
+
+[StwrtXP.Mfg.NTamd64]
+%DeviceDesc% = StwrtXP.Install.NTamd64, HDAUDIO\FUNC_01&VEN_111D&DEV_76C7&SUBSYS_103C2ACD
+
+; Fallback match without the SUBSYS qualifier, in case the BIOS reports a
+; different subsystem ID than what was read off this specific board (some
+; HP BIOS revisions vary SUBSYS across otherwise-identical boards).
+%DeviceDesc% = StwrtXP.Install.NTamd64, HDAUDIO\FUNC_01&VEN_111D&DEV_76C7
+
+[StwrtXP.Install.NTamd64]
+Include     = ks.inf, wdmaudio.inf
+Needs       = KS.Registration, WDMAUDIO.Registration
+CopyFiles   = StwrtXP.CopyFiles
+AddReg      = StwrtXP.AddReg, StwrtXP.Thunk.AddReg
+DelReg      = StwrtXP.DelReg
+
+; The ONLY INF mechanism that sets a device's PDO security descriptor is a
+; "Security" value in an AddReg referenced from a [DDInstall.HW] section - it
+; goes to the device's hardware key, and the PnP manager applies it to the
+; PDO. Confirmed against the WDK 7600 samples, all of which use exactly this
+; placement: toaster/wdm/inf/amd64/toastco.inf [Toaster_Device.NT.HW], plus
+; general/pcidrv, PLX9x5x, portio, amcc5933 and the KMDF toaster variants.
+;
+; This matters here because the PDO is where the denial lives (HANDOFF.md
+; Stage 5af): the bus-owned HDAUDIO\FUNC_01 PDO was dumped at AddDevice time
+; with FILE_DEVICE_SECURE_OPEN set and a *populated* DACL containing zero
+; ACEs - a deny-all. KS device interfaces are registered on the PDO, so a
+; user-mode CreateFile of our filter path resolves there and gets checked
+; against that empty DACL, which is why kstest.exe sees ERROR_ACCESS_DENIED
+; before any IRP reaches our dispatch table.
+;
+; Two earlier attempts put the same SDDL in the wrong sections and both were
+; retested with zero effect (Stage 5q, Stage 5r): the interface AddReg
+; sections write to the device-interface key, and [StwrtXP.AddReg] (reached
+; via AddReg= above) writes to the driver's software key. Neither is read as
+; a device-object security descriptor. This .HW placement has never been
+; tried; [StwrtXP.DelReg] below cleans up the two stale values those attempts
+; left in the registry, since AddReg-written values survive driver uninstall
+; and would otherwise persist across a clean reinstall.
+[StwrtXP.Install.NTamd64.HW]
+AddReg      = StwrtXP.HW.AddReg
+
+[StwrtXP.HW.AddReg]
+HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;WD)"
+
+; Deletes the stale software-key "Security" value written by the Stage 5r
+; attempt. Uninstalling a driver does not undo its AddReg writes, so without
+; this the old value would outlive every reinstall.
+[StwrtXP.DelReg]
+HKR,,Security
+
+[StwrtXP.Install.NTamd64.Services]
+Include     = ks.inf
+Needs       = KS.Registration
+AddService  = stwrtxp,0x00000002,StwrtXP.Service
+; Stage 5bu. See [StwrtXP.Thunk.AddReg] below for why this is here. No
+; SPSVCINST_ASSOCSERVICE flag: ksthunk is a filter on this device's class,
+; not this device's function driver.
+AddService  = ksthunk,,StwrtXP.Thunk.Service
+
+; Stage 5bu - THE FIX FOR 32-BIT AUDIO (Windows Media Player, 32-bit
+; DirectSound). Verified on the target machine.
+;
+; ksthunk.sys is Windows XP x64's "Kernel Streaming WOW64 Thunk Service": an
+; upper filter on the MEDIA device class whose only job is translating
+; kernel-streaming requests issued by 32-bit processes into the 64-bit layout
+; the kernel expects. Microsoft registers it from wdmaudio.inf's
+; [ClassInstall32.NT] - the CLASS installer, which is NOT reachable from
+; [WDMAUDIO.Registration] (the only section a device INF's Include=/Needs=
+; can pull in), so no device INF inherits it. On the target machine the value
+; was absent; a clean XP x64 install has it even with no sound hardware at
+; all (proved by reading the SYSTEM hive out of this project's VMs/XPx64/
+; image, where the class is registered for wave.inf's legacy pseudo-devices).
+;
+; Without it: 64-bit DirectSound streams fine, and anything that goes through
+; the kernel mixer - Windows sounds, sndvol32 - works, because none of that
+; puts a 32-bit structure on the KS wire. But 32-bit DirectSound dies at the
+; pin create, because KSPIN_CONNECT is the first structure in the sequence
+; whose size actually differs between the two bitnesses (64 bytes on x86, 72
+; on x64); every property struct before it - KSPROPERTY, KSP_PIN,
+; KSDATARANGE_AUDIO - is identical in both, which is why the traces looked
+; byte-for-byte the same right up to the point where 32-bit fell silent.
+;
+; 0x00010002 = FLG_ADDREG_TYPE_MULTI_SZ | FLG_ADDREG_APPEND. APPEND does not
+; duplicate a string that is already in the value, which is what makes this
+; safe to run alongside any other audio INF on the same machine - it is
+; Microsoft's own wording, copied verbatim from ClassInstall.AddReg.
+;
+; ksthunk.sys is NOT copied by this INF. It ships with the operating system
+; (%SystemRoot%\system32\drivers\ksthunk.sys, laid down by base setup) and is
+; present even on installs with no audio hardware. If it were ever missing,
+; registering an upper filter that cannot load would stop every device in the
+; MEDIA class with Device Manager code 39; recover it with
+;   expand "%SystemRoot%\Driver Cache\amd64\driver.cab" -F:ksthunk.sys ^
+;          "%SystemRoot%\system32\drivers"
+[StwrtXP.Thunk.AddReg]
+HKLM,"SYSTEM\CurrentControlSet\Control\Class\{4d36e96c-e325-11ce-bfc1-08002be10318}","UpperFilters",0x00010002,"ksthunk"
+
+; Mirrors wdmaudio.inf's [ksthunk_Service_Inst] exactly, including the
+; "PNP Filter" load-order group.
+[StwrtXP.Thunk.Service]
+DisplayName    = %ksthunk.SvcDesc%
+ServiceType    = 1              ; SERVICE_KERNEL_DRIVER
+StartType      = 3              ; SERVICE_DEMAND_START
+ErrorControl   = 1              ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %10%\system32\drivers\ksthunk.sys
+LoadOrderGroup = PNP Filter
+
+; This section is what actually attaches the legacy wave-mapper stack
+; (wdmaud.drv, which backs the "Sounds and Audio Devices" applet and the
+; waveOut/waveIn APIs) to our KS wave subdevice. Modeled verbatim on the WDK
+; 7600 msvad sample's [MSVAD_Simple.AddReg] - without this, KS/PortCls
+; registration succeeds (Device Manager shows "working properly") but
+; nothing above PortCls ever learns a wave endpoint exists here, so the
+; Audio tab shows "no audio device" and NewStream is never called. This was
+; the actual root cause of that symptom (see HANDOFF.md Stage 5j).
+[StwrtXP.AddReg]
+HKR,,AssociatedFilters,,"wdmaud,swmidi,redbook"
+HKR,,Driver,,stwrtxp.sys
+; Stage 5ax: this was "wave" alone, on the reasoning that the driver has
+; no MIDI hardware and no mixer nodes. That reasoning was wrong on both
+; counts. msvad has no MIDI hardware either - it declares the midi
+; subclass because swmidi (already named in AssociatedFilters above)
+; supplies the software synth. And the mixer device is not built from
+; miniport nodes: wdmaud.drv builds it from the TOPOLOGY filter, which
+; this driver has and which Stage 5aw's trace proves sysaudio reads
+; correctly. Declaring these does not claim hardware the driver lacks;
+; it names which wdmaud sub-drivers winmm should attach. Every WDM audio
+; driver in the WDK declares all three (msvad.inf:100-108).
+;
+; This matters because XP's "Sounds and Audio Devices" applet reports
+; "no audio device" off the mixer/volume device, and the mixer subclass
+; was never registered - which is the one layer above PortCls that
+; Stage 5aw's 118-request trace could not see.
+HKR,Drivers,SubClasses,,"wave,midi,mixer"
+HKR,Drivers\wave\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\wave\wdmaud.drv,Description,,%DeviceDesc%
+HKR,Drivers\midi\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\midi\wdmaud.drv,Description,,%MidiDesc%
+HKR,Drivers\mixer\wdmaud.drv,Driver,,wdmaud.drv
+HKR,Drivers\mixer\wdmaud.drv,Description,,%DeviceDesc%
+
+; Stage 5aw: KSCOMPONENTID.Name (see PropertyHandler_ComponentId in
+; common.cpp) is a GUID that the audio stack resolves to a display name
+; through this key. sb16.inf registers NAME_MSSB16 the same way; without
+; the entry the GUID this driver reports would dangle.
+HKLM,%MediaCategories%\%Name.Guid%,Name,,%DeviceDesc%
+
+; Reference strings ("Wave"/"Topology") tie each interface registration to
+; the matching PcRegisterSubdevice name in adapter.cpp/adapter.h
+; (WAVE_SUBDEVICE_NAME/TOPO_SUBDEVICE_NAME) - previously these were empty,
+; leaving every category pointed at one undifferentiated interface with no
+; subdevice binding. Modeled on msvad.inf's [MSVAD_Simple.NT.Interfaces].
+[StwrtXP.Install.NTamd64.Interfaces]
+AddInterface = %KSCATEGORY_AUDIO%,%KSNAME_Wave%, StwrtXP.I.Wave
+AddInterface = %KSCATEGORY_RENDER%,%KSNAME_Wave%, StwrtXP.I.Wave
+AddInterface = %KSCATEGORY_CAPTURE%,%KSNAME_Wave%, StwrtXP.I.Wave
+AddInterface = %KSCATEGORY_AUDIO%,%KSNAME_Topology%, StwrtXP.I.Topo
+
+[StwrtXP.I.Wave]
+AddReg = StwrtXP.I.Wave.AddReg
+DelReg = StwrtXP.I.DelReg
+
+; Interface-level "Security" values were tried here in Stage 5p/5q and had no
+; effect - a device-interface key is not where a device object's SD is read
+; from. They are removed, and DelReg'd below so the values they already wrote
+; do not linger in the registry across reinstalls.
+[StwrtXP.I.Wave.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%DeviceDesc%
+
+[StwrtXP.I.Topo]
+AddReg = StwrtXP.I.Topo.AddReg
+DelReg = StwrtXP.I.DelReg
+
+[StwrtXP.I.Topo.AddReg]
+HKR,,CLSID,,%Proxy.CLSID%
+HKR,,FriendlyName,,%DeviceDesc% Topology
+
+[StwrtXP.I.DelReg]
+HKR,,Security
+
+[StwrtXP.Service]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1              ; SERVICE_KERNEL_DRIVER
+StartType      = 3              ; SERVICE_DEMAND_START
+ErrorControl   = 1              ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %10%\System32\Drivers\stwrtxp.sys
+
+[StwrtXP.CopyFiles]
+stwrtxp.sys
+
+[DestinationDirs]
+StwrtXP.CopyFiles = 10,System32\Drivers
+
+[SourceDisksNames]
+1 = %DiskDesc%,,,
+
+[SourceDisksFiles]
+stwrtxp.sys = 1
+
+[Strings]
+ProviderName    = "Backported Driver Project"
+ManufacturerName= "IDT (backport)"
+DeviceDesc      = "IDT 92HD89E2 HD Audio (XPDM backport)"
+ServiceDesc     = "IDT HD Audio XPDM Service"
+; Verbatim from wdmaudio.inf - this is the name XP itself gives the service.
+ksthunk.SvcDesc = "Kernel Streaming WOW64 Thunk Service"
+MidiDesc        = "IDT 92HD89E2 MIDI (XPDM backport)"
+DiskDesc        = "IDT HD Audio XPDM Backport Driver Disk"
+Proxy.CLSID     = "{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+KSCATEGORY_AUDIO   = "{6994AD04-93EF-11D0-A3CC-00A0C9223196}"
+KSCATEGORY_RENDER  = "{65E8773E-8F56-11D0-A3B9-00A0C9223196}"
+KSCATEGORY_CAPTURE = "{65E8773D-8F56-11D0-A3B9-00A0C9223196}"
+KSNAME_Wave        = "Wave"
+KSNAME_Topology    = "Topology"
+MediaCategories    = "SYSTEM\CurrentControlSet\Control\MediaCategories"
+Name.Guid          = "{17E1EBEF-A7BA-4DF6-B3AB-3635DA98781B}"

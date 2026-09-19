@@ -1,0 +1,31 @@
+# pindump - standalone usermode diagnostic, NOT part of the driver itself.
+#
+# Dumps every KS pin's advertised data ranges and probes DATAINTERSECTION.
+# Build it from BOTH a x64 and a x86 "Windows XP / Server 2003" WDK build
+# environment - the whole question it answers is a 32/64 split.
+#
+# The source directory must have NO SPACES in its path: the WDK build system
+# fails with "U1087: cannot have : and :: dependents for same target" if it
+# does. See HANDOFF.md Stage 5bn.
+#
+#   build -cZ -w
+
+TARGETNAME=pindump
+TARGETTYPE=PROGRAM
+MSC_WARNING_LEVEL=/W4 /WX
+
+UMTYPE=console
+UMENTRY=wmain
+USE_MSVCRT=1
+
+INCLUDES=$(DDK_INC_PATH)
+
+_NT_TARGET_VERSION=$(_NT_TARGET_VERSION_WINXP)
+
+TARGETLIBS=\
+    $(SDK_LIB_PATH)\setupapi.lib \
+    $(SDK_LIB_PATH)\advapi32.lib \
+    $(SDK_LIB_PATH)\ole32.lib \
+    $(DDK_LIB_PATH)\ksuser.lib
+
+SOURCES=pindump.c
